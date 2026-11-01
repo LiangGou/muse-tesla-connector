@@ -106,6 +106,10 @@ Tesla Fleet API is pay-per-use (for example, vehicle data requests are billed pe
 - Fleet API behavior, pricing, and regional availability are Tesla's and can change; the connector targets the documented North America endpoints by default.
 - A fully compromised host defeats local protections. This connector reduces third-party and agent risk; it does not make a compromised machine safe. See SECURITY.md.
 
+## Credits
+
+This connector was coded by Muse, Meta's personal AI agent. The ideas, the story, and the prompts are the author's; the code is Muse's — written in one voice-driven session, under the author's direction, rulings, and confirmations.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
