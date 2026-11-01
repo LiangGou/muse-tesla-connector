@@ -1,0 +1,16 @@
+# Secrets and credentials — never commit these
+service/config.json
+service/secrets/
+service/keys/
+*.pem
+*.key
+
+# Runtime state
+service/logs/
+service/proxy/
+service/public-key-staging/*.local
+readouts/
+
+# Python
+__pycache__/
+*.pyc

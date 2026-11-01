@@ -1,0 +1,1 @@
+{"client_id":"YOUR_TESLA_DEVELOPER_APP_CLIENT_ID","domain":"your-domain.example.com","fleet_base":"https://fleet-api.prd.na.vn.cloud.tesla.com","redirect_uri":"https://your-domain.example.com/auth/callback","vin":"YOUR_VEHICLE_VIN"}

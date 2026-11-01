@@ -1,0 +1,6 @@
+#!/bin/sh
+# Thin wrapper over the Tesla broker (the only component that talks to Tesla).
+# Resolves the broker relative to this script:
+#   <repo>/bin/tesla  ->  <repo>/service/broker.py
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec python3 "$SCRIPT_DIR/../service/broker.py" "$@"

@@ -1,0 +1,6 @@
+id: "custom.tesla"
+title: "Tesla (self-built Fleet API)"
+description: "Read your Tesla's status, battery, charging and location through your own Tesla Fleet API developer app and a local broker; the only commands are wake and owner-confirmed navigation sends."
+include_in_prompt: true
+require_auth: false
+aliases: ["Tesla Fleet API", "my Tesla", "my car"]
