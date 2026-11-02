@@ -15,7 +15,7 @@ There is no code path for locks, unlock, drive, climate, charging, trunk/frunk, 
 
 A navigation send cannot happen in one step:
 
-- `nav-prepare` performs no side effects. It records the exact destination (canonical text, or `lat,lon`), checks whether the same destination was sent within the last 10 minutes (duplicate guard), reads vehicle state, and returns a one-time confirmation token (128-bit random, 10-minute TTL) bound to that pending destination.
+- `nav-prepare` sends no command to the vehicle. It records the exact destination (canonical text, or `lat,lon`) locally, checks whether the same destination was sent within the last 10 minutes (duplicate guard), reads vehicle state, and returns a one-time confirmation token (128-bit random, 10-minute TTL) bound to that pending destination.
 - The operating procedure (in `CONNECTOR.md`, which the agent loads) requires showing the owner the exact destination text and receiving the owner's confirmation in conversation before `nav-send` is called.
 - `nav-send <token>` executes exactly once, only if the token matches the pending prepare and has not expired. It wakes the vehicle first if needed (disclosed at prepare time), and refuses an identical destination inside the duplicate window unless the owner explicitly overrides.
 - Sends are executed through the local `tesla-http-proxy` so the command is signed with the local Fleet API key. If the proxy cannot be started, the send falls back to direct REST (navigation is a REST-class command — Tesla's own proxy passes it through unsigned) and the result reports `route: direct-rest`. The fallback degrades the route, never the confirmation gate, and is never silent.

@@ -2,17 +2,30 @@
 """Muse Tesla connector broker: the only component that talks to Tesla's Fleet API.
 
 Owns all Tesla credentials (client secret, OAuth token chain) in a private
-store under this directory. Implements the refresh state machine documented in SECURITY.md: serialized refreshes under a file lock, fsync-before-use store
-writes, one predecessor-token retry inside Tesla's 24-hour grace window on
-an ambiguous refresh outcome, and a stop-and-reauthorize state otherwise.
+store under this directory. Implements the refresh state machine described
+in SECURITY.md: serialized refreshes under a file lock, fsync-before-use
+store writes, one predecessor-token retry inside Tesla's 24-hour grace
+window on an ambiguous refresh outcome, and a stop-and-reauthorize state
+otherwise.
 
-CLI verbs: exchange-code, refresh, partner-check, vehicles, vehicle-data,
-status, location, fleet-status, key-status, doctor.
+Usage: tesla <verb> [args]   (via bin/tesla)
+
+Reads:            doctor, status, location, vehicles, vehicle-data,
+                  fleet-status, key-status, partner-check
+Token upkeep:     refresh [--force], exchange-code <code>
+Commands:         wake
+                  nav-prepare <destination text>
+                  nav-prepare --gps <lat> <lon>
+                  nav-send [--confirm] <token> [--override-duplicate]
+
+Exit codes: 0 ok, 1 broker error, 2 usage error, 3 reauthorization needed.
 Token values are never printed; outputs are data summaries and JSON payloads.
 """
 import fcntl
 import json
+import math
 import os
+import secrets as _secrets
 import ssl
 import subprocess
 import sys
@@ -23,9 +36,11 @@ import urllib.request
 from pathlib import Path
 
 SERVICE = Path(__file__).resolve().parent
-SECRETS = Path(os.environ.get("TESLA_SECRETS_DIR", SERVICE / "secrets"))
-TOKEN_STORE = SECRETS / "tokens.json"
-LOCK_FILE = SECRETS / ".tokens.lock"
+
+
+# --- Configuration ---------------------------------------------------------
+
+
 def _load_config() -> dict:
     """Configuration comes from config.json next to this file (copy
     config.example.json and fill it in), with environment overrides:
@@ -68,6 +83,13 @@ class ReauthorizeNeeded(BrokerError):
     pass
 
 
+# --- Secret store ----------------------------------------------------------
+
+SECRETS = Path(os.environ.get("TESLA_SECRETS_DIR") or (SERVICE / "secrets"))
+TOKEN_STORE = SECRETS / "tokens.json"
+LOCK_FILE = SECRETS / ".tokens.lock"
+
+
 def client_secret() -> str:
     return (SECRETS / "client-secret.txt").read_text(encoding="utf-8").strip()
 
@@ -82,7 +104,10 @@ def _fsync_dir(path: Path) -> None:
 
 def load_store() -> dict:
     if not TOKEN_STORE.exists():
-        raise ReauthorizeNeeded("no token store yet; run the S6 authorization first")
+        raise ReauthorizeNeeded(
+            "no token store yet; run the initial authorization first "
+            "(README Setup step 7, then `tesla exchange-code <code>`)"
+        )
     return json.loads(TOKEN_STORE.read_text(encoding="utf-8"))
 
 
@@ -111,6 +136,9 @@ class refresh_lock:
     def __exit__(self, *exc):
         fcntl.flock(self._fh, fcntl.LOCK_UN)
         self._fh.close()
+
+
+# --- Token endpoint: exchange, refresh state machine -----------------------
 
 
 def _post_form(url: str, params: dict) -> tuple[int, dict]:
@@ -145,7 +173,14 @@ def _apply_token_response(store: dict, body: dict) -> dict:
 
 
 def exchange_code(code: str) -> dict:
-    """S6: trade the owner's authorization code for the first token chain."""
+    """Initial authorization (README Setup step 7): trade the owner's
+    authorization code for the first token chain."""
+    redirect_uri = CONFIG.get("redirect_uri")
+    if not redirect_uri:
+        raise BrokerError(
+            "no redirect_uri configured; set \"redirect_uri\" in config.json "
+            "or the TESLA_REDIRECT_URI environment variable"
+        )
     status, body = _post_form(
         TOKEN_URL,
         {
@@ -153,7 +188,7 @@ def exchange_code(code: str) -> dict:
             "client_id": CLIENT_ID,
             "client_secret": client_secret(),
             "code": code,
-            "redirect_uri": CONFIG["redirect_uri"],
+            "redirect_uri": redirect_uri,
             "audience": FLEET_BASE,
         },
     )
@@ -177,7 +212,7 @@ def _refresh_once(refresh_token: str, with_secret: bool) -> tuple[int, dict]:
 
 
 def refresh(force: bool = False) -> dict:
-    """Refresh the access token following the Section 6 state machine.
+    """Refresh the access token following the state machine in SECURITY.md.
 
     Tesla's own refresh example sends no client secret; that shape is tried
     first and the result recorded in the store (see SECURITY.md).
@@ -211,15 +246,17 @@ def refresh(force: bool = False) -> dict:
                 except (urllib.error.URLError, TimeoutError, ConnectionError):
                     raise ReauthorizeNeeded(
                         "refresh outcome ambiguous and predecessor retry unreachable; "
-                        "stop and re-authorize (S6)"
+                        "stop and re-authorize (README Setup step 7)"
                     )
             else:
                 raise ReauthorizeNeeded(
                     "refresh outcome ambiguous and no predecessor in grace window; "
-                    "stop and re-authorize (S6)"
+                    "stop and re-authorize (README Setup step 7)"
                 )
         if status == 401 or (status == 400 and body.get("error") == "login_required"):
-            raise ReauthorizeNeeded("refresh token rejected (login_required); re-authorize (S6)")
+            raise ReauthorizeNeeded(
+                "refresh token rejected (login_required); re-authorize (README Setup step 7)"
+            )
         if status != 200 or "access_token" not in body:
             raise BrokerError(f"refresh failed: http {status} {body.get('error', '')}")
         store = _apply_token_response(store, body)
@@ -234,6 +271,21 @@ def access_token() -> str:
         refresh()
         store = load_store()
     return store["access_token"]
+
+
+# --- Fleet API transport ---------------------------------------------------
+
+
+def call_log(verb: str, outcome: str, detail: str = "") -> None:
+    """Best-effort audit line in service/logs/calls.jsonl (never secrets)."""
+    try:
+        logs = SERVICE / "logs"
+        logs.mkdir(exist_ok=True)
+        entry = {"ts": int(time.time()), "verb": verb, "outcome": outcome, "detail": detail[:120]}
+        with open(logs / "calls.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
 
 
 def fleet_get(path: str, retry_on_401: bool = True) -> tuple[int, dict]:
@@ -252,17 +304,6 @@ def fleet_get(path: str, retry_on_401: bool = True) -> tuple[int, dict]:
         except Exception:
             body = {}
         return err.code, body
-
-
-def call_log(verb: str, outcome: str, detail: str = "") -> None:
-    try:
-        logs = SERVICE / "logs"
-        logs.mkdir(exist_ok=True)
-        entry = {"ts": int(time.time()), "verb": verb, "outcome": outcome, "detail": detail[:120]}
-        with open(logs / "calls.jsonl", "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(entry) + "\n")
-    except Exception:
-        pass
 
 
 def fleet_post(path: str, payload: dict, retry_on_401: bool = True) -> tuple[int, dict]:
@@ -305,6 +346,9 @@ def partner_token() -> str:
     return body["access_token"]
 
 
+# --- Read commands ---------------------------------------------------------
+
+
 def pinned_vin() -> str:
     vin = CONFIG.get("vin")
     if not vin:
@@ -324,7 +368,6 @@ def cmd_vehicles() -> dict:
                 "display_name": v.get("display_name"),
                 "state": v.get("state"),
                 "in_service": v.get("in_service"),
-                "charge_port": None,
             }
         )
     return {"count": body.get("count", len(out)), "vehicles": out}
@@ -389,6 +432,12 @@ def cmd_fleet_status() -> dict:
     resp = body.get("response", {})
     return resp.get(vin, resp)
 
+
+# --- Wake + navigation: the entire actuation surface -----------------------
+#
+# The confirmation gate lives here: nav-prepare records a pending send and
+# mints a one-time token; nav-send executes only against that token. See
+# SECURITY.md for the model.
 
 NAV_GUARD = SECRETS / "nav-guard.json"
 DUP_WINDOW_SECONDS = 600
@@ -461,8 +510,6 @@ def _nav_payload(kind: str, text: str | None, lat: float | None, lon: float | No
 
 
 def cmd_nav_prepare(kind: str, text: str | None = None, lat: float | None = None, lon: float | None = None) -> dict:
-    import secrets as _secrets
-
     canonical = text.strip() if kind == "text" else f"{lat},{lon}"
     guard = _load_guard()
     last = guard.get("last_send", {})
@@ -471,7 +518,7 @@ def cmd_nav_prepare(kind: str, text: str | None = None, lat: float | None = None
         and int(time.time()) - int(last.get("ts", 0)) < DUP_WINDOW_SECONDS
     )
     state = vehicle_state()
-    token = _secrets.token_hex(8)
+    token = _secrets.token_hex(16)  # 128-bit one-time confirmation token
     guard["pending"] = {
         "token": token,
         "kind": kind,
@@ -531,6 +578,8 @@ def cmd_nav_send(token: str, override_duplicate: bool = False) -> dict:
     path = f"/api/1/vehicles/{vin}/command/{endpoint}"
     route = "direct-rest"
     if os.environ.get("TESLA_BROKER_TEST_TRANSPORT"):
+        # Test hook: send over direct REST instead of the local signing
+        # proxy. The confirmation gate above is unaffected either way.
         status, body = fleet_post(path, payload)
     elif proxy_ensure():
         status, body = proxy_post(path, payload)
@@ -558,6 +607,8 @@ def cmd_nav_send(token: str, override_duplicate: bool = False) -> dict:
         "reason": resp.get("reason", ""),
     }
 
+
+# --- Local signing proxy ---------------------------------------------------
 
 PROXY_BASE = "https://127.0.0.1:4443"
 PROXY_CERT = SERVICE / "proxy" / "tls-cert.pem"
@@ -619,6 +670,9 @@ def proxy_post(path: str, payload: dict) -> tuple[int, dict]:
             return exc.code, {"raw": raw[:200]}
 
 
+# --- Partner registration and key status -----------------------------------
+
+
 def cmd_partner_check() -> dict:
     tok = partner_token()
     q = urllib.parse.urlencode({"domain": DOMAIN})
@@ -634,8 +688,8 @@ def cmd_partner_check() -> dict:
 
 
 def _staged_point_hex() -> str:
-    import subprocess
-
+    """Hex of the staged public key's uncompressed point, for comparison
+    with the key Tesla has registered for the domain (partner-check)."""
     der = subprocess.run(
         ["openssl", "ec", "-pubin", "-in", str(SERVICE / "public-key-staging/com.tesla.3p.public-key.pem"), "-outform", "DER"],
         capture_output=True, check=True,
@@ -664,13 +718,14 @@ def cmd_key_status() -> dict:
     return out
 
 
+# --- Doctor ----------------------------------------------------------------
+
+
 def cmd_doctor() -> dict:
     checks = {}
     checks["client_secret_present"] = (SECRETS / "client-secret.txt").exists()
     try:
-        import urllib.request as u
-
-        with u.urlopen(f"https://{DOMAIN}/.well-known/appspecific/com.tesla.3p.public-key.pem", timeout=15) as r:
+        with urllib.request.urlopen(f"https://{DOMAIN}/.well-known/appspecific/com.tesla.3p.public-key.pem", timeout=15) as r:
             checks["public_key_url_live"] = r.status == 200
     except Exception:
         checks["public_key_url_live"] = False
@@ -692,6 +747,14 @@ def cmd_doctor() -> dict:
     return checks
 
 
+# --- CLI dispatch ----------------------------------------------------------
+
+
+def _usage(message: str) -> int:
+    print(f"usage: {message}", file=sys.stderr)
+    return 2
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         print(__doc__)
@@ -699,6 +762,8 @@ def main(argv: list[str]) -> int:
     verb = argv[1]
     try:
         if verb == "exchange-code":
+            if len(argv) < 3:
+                return _usage("tesla exchange-code <code>")
             result = exchange_code(argv[2])
         elif verb == "refresh":
             result = refresh(force="--force" in argv)
@@ -707,7 +772,21 @@ def main(argv: list[str]) -> int:
         elif verb == "nav-prepare":
             # nav-prepare <destination text>  |  nav-prepare --gps <lat> <lon>
             if len(argv) > 2 and argv[2] == "--gps":
-                result = cmd_nav_prepare("gps", lat=float(argv[3]), lon=float(argv[4]))
+                if len(argv) < 5:
+                    return _usage("tesla nav-prepare --gps <lat> <lon>")
+                try:
+                    lat, lon = float(argv[3]), float(argv[4])
+                except ValueError:
+                    return _usage("tesla nav-prepare --gps <lat> <lon>  (lat/lon must be numbers)")
+                if (
+                    not (math.isfinite(lat) and math.isfinite(lon))
+                    or not -90 <= lat <= 90
+                    or not -180 <= lon <= 180
+                ):
+                    return _usage("tesla nav-prepare --gps <lat> <lon>  (lat within [-90, 90], lon within [-180, 180])")
+                result = cmd_nav_prepare("gps", lat=lat, lon=lon)
+            elif len(argv) < 3 or not " ".join(argv[2:]).strip():
+                return _usage("tesla nav-prepare <destination text>")
             else:
                 result = cmd_nav_prepare("text", text=" ".join(argv[2:]))
         elif verb == "nav-send":
@@ -715,6 +794,8 @@ def main(argv: list[str]) -> int:
             _args = [a for a in argv[2:] if a != "--override-duplicate"]
             if _args and _args[0] == "--confirm":
                 _args = _args[1:]
+            if not _args:
+                return _usage("tesla nav-send [--confirm] <token> [--override-duplicate]")
             result = cmd_nav_send(_args[0], override_duplicate="--override-duplicate" in argv)
         elif verb == "partner-check":
             result = cmd_partner_check()

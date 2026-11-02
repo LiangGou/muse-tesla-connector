@@ -3,8 +3,9 @@
 owner's browser paste and stores it in the broker secret store (mode 600).
 Binds 127.0.0.1 only, token-gated path, exits after one successful POST or
 after the timeout. The secret value is never logged or printed."""
+import os
 import secrets as _secrets
-import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -12,7 +13,9 @@ from urllib.parse import parse_qs
 
 TOKEN = _secrets.token_hex(16)
 PORT = 8791
-STORE = Path(__file__).resolve().parent / "secrets"
+# The wizard writes to the same store the broker reads: TESLA_SECRETS_DIR
+# when set, otherwise service/secrets/ next to this script.
+STORE = Path(os.environ.get("TESLA_SECRETS_DIR") or (Path(__file__).resolve().parent / "secrets"))
 DEADLINE = time.time() + 1800  # 30 minutes
 
 PAGE = """<!DOCTYPE html>
@@ -80,12 +83,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
-        threading_exit()
+        _shutdown_soon()
 
 
-def threading_exit():
-    import threading
-
+def _shutdown_soon():
+    """Exit shortly after the response is delivered (one-shot wizard)."""
     threading.Thread(target=_shutdown, daemon=True).start()
 
 
@@ -101,4 +103,7 @@ while time.time() < DEADLINE:
     server.handle_request()
     if (STORE / ".received").exists():
         break
-print("wizard exit", flush=True)
+if (STORE / ".received").exists():
+    print("wizard exit: secret stored", flush=True)
+else:
+    print("wizard exit: timed out after 30 minutes; nothing stored", flush=True)

@@ -7,7 +7,7 @@
 - `service/broker.py` — the only component that talks to Tesla. It owns all credentials and implements the OAuth refresh state machine. All configuration comes from `service/config.json` (copy `service/config.example.json`) or environment variables (`TESLA_CLIENT_ID`, `TESLA_VIN`, `TESLA_DOMAIN`, `TESLA_FLEET_BASE`, `TESLA_REDIRECT_URI`, `TESLA_SECRETS_DIR`). Nothing personal is hardcoded.
 - `bin/tesla` — a thin wrapper over the broker CLI. This is the only interface an agent should use; never call Tesla endpoints directly.
 - `service/run-proxy.sh` — starts Tesla's official `tesla-http-proxy` on `127.0.0.1:4443` with the local Fleet API signing key. The broker supervises it (starts it when needed for command sends). You must supply the `tesla-http-proxy` binary from Tesla's official vehicle-command repository (see README setup), via `TESLA_HTTP_PROXY_BIN` or your `PATH`.
-- `service/setup_wizard.py` — a one-time, loopback-only, token-gated web page for the owner to paste the Tesla client secret into the local store once. The secret is never typed into chat and never logged.
+- `service/setup_wizard.py` — a one-time, loopback-only, token-gated web page for the owner to paste the Tesla client secret into the local store once. The secret is never typed into chat and never logged. The wizard writes to the same store the broker reads (`service/secrets/`, or `TESLA_SECRETS_DIR` when set).
 
 ## How authentication works here (deliberate design)
 
@@ -22,7 +22,7 @@
 
 Reads (no side effects):
 
-- `tesla doctor` — health report: client secret present, public-key URL live, partner registration match, token store present, VIN pinned, local signing-proxy health. Run this first when anything seems wrong.
+- `tesla doctor` — health report: client secret present, public-key URL live, partner registration match, token store present, VIN pinned, local signing-proxy health. Run this first when anything seems wrong. Note: `proxy_health` reads `false` until the first navigation send — the broker starts the proxy on demand — so **a `false` there before any send is normal, not a failure**.
 - `tesla status` — battery level, charge limit, charging state, cabin temperature, odometer, drive state and speed for the pinned vehicle.
 - `tesla location` — latitude, longitude, heading, and GPS freshness. Location is live data: an asleep vehicle may return no location, and that absence must be reported as-is, never filled in from an old reading.
 - `tesla vehicles` — the account's vehicle list.
@@ -39,7 +39,7 @@ Token maintenance (normally automatic; reads refresh proactively):
 Commands (the complete actuation surface — there is nothing else):
 
 - `tesla wake` — one unsigned cloud wake call for the pinned vehicle. Never loop it.
-- `tesla nav-prepare <destination text>` or `tesla nav-prepare --gps <lat> <lon>` — NO side effects. Returns the exact destination text, the vehicle state, whether confirming will wake the vehicle, a duplicate warning, and a one-time confirmation token (10-minute TTL).
+- `tesla nav-prepare <destination text>` or `tesla nav-prepare --gps <lat> <lon>` — sends NO command to the vehicle. It records the pending destination locally and makes one billed vehicles read to report state. Returns the exact destination text, the vehicle state, whether confirming will wake the vehicle, a duplicate warning, and a one-time confirmation token (10-minute TTL).
 - `tesla nav-send <token>` (also accepts `tesla nav-send --confirm <token>`) — executes one prepared send exactly once. If the vehicle was asleep it wakes it and waits up to 60 seconds, as disclosed at prepare time. The broker refuses a mismatched or expired token, and refuses an identical destination within 10 minutes (duplicate guard; `--override-duplicate` only on the owner's explicit say-so). Sends route through the local `tesla-http-proxy`; if the proxy cannot be started, navigation falls back to direct REST and the result reports `route: direct-rest` — it is never silent about the route.
 
 Exit codes: `3` with `reauthorize_needed` means the token chain is dead — tell the owner the Tesla connection needs one re-authorization in the browser and walk through it with them; do not retry. `1` is a broker error; `2` is a usage error.
