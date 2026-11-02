@@ -4,12 +4,23 @@
 
 # Muse Tesla Connector — Free
 
-**Connect your Tesla to your Muse agent through Tesla's official Fleet API. No subscription, no third-party service holding your tokens — everything runs on your own machine, under a developer app you own.**
+**The hosted Tesla connectors charge a monthly subscription — per car — and hold your Tesla tokens on their servers. This one doesn't: connect your Tesla to your Muse agent through Tesla's official Fleet API, self-hosted, under a developer app you own, with every secret on your own machine.**
 
 [![License: MIT](https://img.shields.io/github/license/LiangGou/muse-tesla-connector)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/LiangGou/muse-tesla-connector)](https://github.com/LiangGou/muse-tesla-connector/stargazers)
 
 </div>
+
+<p align="center">
+  <a href="#what-it-does">What it does</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#safety-model-summary">Safety model</a> •
+  <a href="#setup">Setup</a> •
+  <a href="#usage">Usage</a> •
+  <a href="#costs">Costs</a>
+</p>
+
+**The short version:** a small local broker gives your Muse agent full read access to your Tesla, plus exactly two commands — *wake*, and *send a navigation destination you confirm first*. Nothing else is expressible in the code.
 
 Third-party Tesla dashboards and agent integrations typically charge a monthly subscription *per car* for the privilege of holding your Tesla credentials on their servers. This project is the do-it-yourself alternative: a small local broker that speaks to Tesla's official Fleet API with your own developer application, exposes a deliberately tiny command surface to your Muse agent, and keeps every secret on your disk.
 
@@ -45,6 +56,13 @@ Third-party Tesla dashboards and agent integrations typically charge a monthly s
 ## Why it exists
 
 On a drive, the author asked his Muse agent to order a coffee ahead and send the destination to his car. Muse could do neither: it had no access to the car. The available third-party connector worked through a hosted service that wanted a monthly fee per car and custody of the Tesla tokens. So instead, in one voice-driven session, Muse and its owner registered a Tesla developer app, set up the domain and signing key, and wrote this connector. Total new recurring cost: $0 (Tesla's Fleet API is pay-per-use with a small monthly discount that comfortably covers personal use; see Costs). The subscription quote is what this project replaces.
+
+|  | Hosted third-party connector | This connector |
+|---|---|---|
+| Cost | Monthly subscription, per car | $0/month — pay-per-use Fleet API under your own billing cap |
+| Your Tesla tokens | Held on the provider's servers | Never leave your machine (local mode-600 store) |
+| What the agent can do | Whatever the provider exposes | Reads, plus wake + owner-confirmed navigation — nothing else exists in the code |
+| Kill switch | The provider's account settings | Yours: remove the virtual key, revoke the app's consent, or hit your billing cap |
 
 ## Architecture
 
@@ -177,6 +195,8 @@ Tesla Fleet API is pay-per-use (for example, vehicle data requests are billed pe
 ## Credits
 
 This connector was coded by Muse, Meta's personal AI agent. The ideas, the story, and the prompts are the author's; the code is Muse's — written in one voice-driven session, under the author's direction, rulings, and confirmations.
+
+**If this saved you a subscription, consider starring the repo** — it helps other Muse and Tesla owners find it.
 
 ## License
 
