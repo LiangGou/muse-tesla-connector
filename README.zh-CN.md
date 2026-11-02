@@ -66,32 +66,9 @@
 
 ## 架构
 
-```mermaid
-flowchart TB
-    Owner(["Owner"])
-    Agent(["Muse agent"])
+![架构图：车主与 Muse 智能体位于虚线信任边界之外；边界内有 bin/tesla CLI、service/broker.py、tesla-http-proxy、service/secrets/ 密钥存储与 service/keys/ 签名密钥；另一侧是 Tesla Fleet API 与车辆。broker 通过 Fleet API 读取数据，并通过本地签名代理发送命令。](assets/architecture.svg)
 
-    subgraph Local["Your machine (trust boundary)"]
-        CLI["bin/tesla<br/>connector CLI"]
-        Broker["service/broker.py<br/>OAuth token chain, refresh state machine,<br/>nav prepare/send guard"]
-        Proxy["tesla-http-proxy<br/>127.0.0.1:4443, signs commands<br/>with the local Fleet API key"]
-        Store[("service/secrets/<br/>client secret + token store, mode 600")]
-        Keys[("service/keys/<br/>Fleet API signing key (private half never leaves)")]
-    end
-
-    TeslaAPI[["Tesla Fleet API<br/>auth.tesla.com + fleet-api"]]
-    Car[["Your Tesla<br/>virtual key paired"]]
-
-    Owner -->|"confirms exact destination<br/>in conversation"| Agent
-    Agent -->|"CLI verbs: reads, wake,<br/>nav-prepare / nav-send"| CLI
-    CLI --> Broker
-    Broker -->|"reads + unsigned calls<br/>HTTPS + OAuth bearer"| TeslaAPI
-    Broker -->|"command sends<br/>via local proxy"| Proxy
-    Proxy -->|"signed command<br/>HTTPS"| TeslaAPI
-    TeslaAPI --> Car
-    Broker -.->|"reads/writes tokens"| Store
-    Proxy -.->|"signs with"| Keys
-```
+图源文件：[docs/architecture.mmd](docs/architecture.mmd)
 
 **读取流程**：智能体 → `bin/tesla` → broker（按需刷新 OAuth 令牌）→ Fleet API → 汇总后的 JSON 返回给智能体。
 

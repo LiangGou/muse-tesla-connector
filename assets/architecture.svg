@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1700 1150" width="1700" height="1150" role="img" aria-label="Architecture diagram for the Muse Tesla connector">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowDash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <style>
+      .title  { font: 700 24px 'Segoe UI','Helvetica Neue',Arial,sans-serif; fill: #0f172a; }
+      .mono   { font: 700 23px ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace; fill: #0f172a; }
+      .sub    { font: 400 19px 'Segoe UI','Helvetica Neue',Arial,sans-serif; fill: #475569; }
+      .label  { font: 400 20px 'Segoe UI','Helvetica Neue',Arial,sans-serif; fill: #475569; }
+      .labelB { font: 400 20px 'Segoe UI','Helvetica Neue',Arial,sans-serif; fill: #2563eb; }
+      .box    { fill: #ffffff; stroke: #64748b; stroke-width: 2; }
+      .actor  { fill: #e2e8f0; stroke: #475569; stroke-width: 2; }
+      .ext    { fill: #f8fafc; stroke: #475569; stroke-width: 2; }
+      .extIn  { fill: none; stroke: #475569; stroke-width: 1.2; }
+      .store  { fill: #eef2f7; stroke: #64748b; stroke-width: 2; }
+      .storeTop { fill: #dde5ee; stroke: #64748b; stroke-width: 2; }
+      .edge   { stroke: #334155; stroke-width: 2.5; fill: none; }
+      .edgeB  { stroke: #2563eb; stroke-width: 3; fill: none; }
+      .edgeD  { stroke: #64748b; stroke-width: 2.2; fill: none; stroke-dasharray: 7 6; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1700" height="1150" fill="#ffffff"/>
+
+  <!-- ===== Trust boundary container ===== -->
+  <rect x="380" y="80" width="780" height="1010" rx="18" fill="#f8fafc" stroke="#94a3b8" stroke-width="2" stroke-dasharray="9 7"/>
+  <text x="408" y="124" style="font:700 22px 'Segoe UI','Helvetica Neue',Arial,sans-serif" fill="#334155">Your machine (trust boundary)</text>
+
+  <!-- ===== Actors (outside, left) ===== -->
+  <rect class="actor" x="60" y="110" width="220" height="76" rx="38"/>
+  <text class="title" x="170" y="159" text-anchor="middle">Owner</text>
+
+  <rect class="actor" x="60" y="298" width="220" height="76" rx="38"/>
+  <text class="title" x="170" y="347" text-anchor="middle">Muse agent</text>
+
+  <!-- Owner -> Agent -->
+  <line class="edge" x1="170" y1="186" x2="170" y2="292" marker-end="url(#arrow)"/>
+  <text class="label" x="190" y="214">confirms exact</text>
+  <text class="label" x="190" y="239">destination in</text>
+  <text class="label" x="190" y="264">conversation</text>
+
+  <!-- Agent -> CLI -->
+  <line class="edge" x1="280" y1="336" x2="424" y2="336" marker-end="url(#arrow)"/>
+  <text class="label" x="445" y="258">CLI verbs: reads, wake,</text>
+  <text class="label" x="445" y="284">nav-prepare / nav-send</text>
+
+  <!-- ===== Inside the boundary ===== -->
+  <!-- CLI -->
+  <rect class="box" x="430" y="290" width="330" height="92" rx="12"/>
+  <text class="mono" x="595" y="332" text-anchor="middle">bin/tesla</text>
+  <text class="sub" x="595" y="362" text-anchor="middle">connector CLI</text>
+
+  <!-- CLI -> Broker -->
+  <line class="edge" x1="595" y1="382" x2="595" y2="464" marker-end="url(#arrow)"/>
+
+  <!-- Broker -->
+  <rect class="box" x="430" y="470" width="660" height="128" rx="12"/>
+  <text class="mono" x="760" y="520" text-anchor="middle">service/broker.py</text>
+  <text class="sub" x="760" y="552" text-anchor="middle">OAuth token chain &#183; refresh state machine</text>
+  <text class="sub" x="760" y="580" text-anchor="middle">nav prepare / send guard</text>
+
+  <!-- Broker -> Tesla API (reads) -->
+  <text class="label" x="955" y="428" text-anchor="middle">reads + unsigned calls</text>
+  <text class="label" x="955" y="454" text-anchor="middle">HTTPS + OAuth bearer</text>
+  <line class="edge" x1="1090" y1="534" x2="1244" y2="534" marker-end="url(#arrow)"/>
+
+  <!-- Broker -> Proxy (command path, accent) -->
+  <line class="edgeB" x1="665" y1="598" x2="665" y2="684" marker-end="url(#arrowBlue)"/>
+  <text class="labelB" x="690" y="638">command sends</text>
+  <text class="labelB" x="690" y="664">via local proxy</text>
+
+  <!-- Proxy -->
+  <rect x="430" y="690" width="470" height="118" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"/>
+  <text class="mono" x="665" y="738" text-anchor="middle">tesla-http-proxy</text>
+  <text class="sub" x="665" y="766" text-anchor="middle">127.0.0.1:4443 &#183; signs commands</text>
+  <text class="sub" x="665" y="792" text-anchor="middle">with the local Fleet API key</text>
+
+  <!-- Signed-command channel: proxy bottom -> along the bottom -> up into Tesla API -->
+  <polyline class="edgeB" points="770,808 770,1040 1570,1040 1570,608" marker-end="url(#arrowBlue)"/>
+  <text class="labelB" x="1335" y="1021" text-anchor="middle">signed command &#183; HTTPS</text>
+
+  <!-- Keys cylinder (bottom left) -->
+  <path class="store" d="M 430 896 L 430 989 A 150 16 0 0 0 730 989 L 730 896 A 150 16 0 0 1 430 896 Z"/>
+  <ellipse class="storeTop" cx="580" cy="896" rx="150" ry="16"/>
+  <text class="mono" x="580" y="942" text-anchor="middle" style="font-size:21px">service/keys/</text>
+  <text class="sub" x="580" y="970" text-anchor="middle" style="font-size:18px">Fleet API signing key</text>
+  <text class="sub" x="580" y="994" text-anchor="middle" style="font-size:18px">private half never leaves</text>
+
+  <!-- Secret store cylinder (bottom right) -->
+  <path class="store" d="M 810 896 L 810 989 A 150 16 0 0 0 1110 989 L 1110 896 A 150 16 0 0 1 810 896 Z"/>
+  <ellipse class="storeTop" cx="960" cy="896" rx="150" ry="16"/>
+  <text class="mono" x="960" y="942" text-anchor="middle" style="font-size:21px">service/secrets/</text>
+  <text class="sub" x="960" y="970" text-anchor="middle" style="font-size:18px">client secret + token store</text>
+  <text class="sub" x="960" y="994" text-anchor="middle" style="font-size:18px">mode 600</text>
+
+  <!-- Proxy -.-> Keys -->
+  <line class="edgeD" x1="560" y1="808" x2="560" y2="874" marker-end="url(#arrowDash)"/>
+  <text class="label" x="578" y="852">signs with</text>
+
+  <!-- Broker -.-> Store -->
+  <line class="edgeD" x1="950" y1="598" x2="950" y2="874" marker-end="url(#arrowDash)"/>
+  <text class="label" x="968" y="732">reads/writes</text>
+  <text class="label" x="968" y="758">tokens</text>
+
+  <!-- ===== External systems (right) ===== -->
+  <rect class="ext" x="1250" y="470" width="350" height="130" rx="10"/>
+  <rect class="extIn" x="1257" y="477" width="336" height="116" rx="7"/>
+  <text class="title" x="1425" y="526" text-anchor="middle">Tesla Fleet API</text>
+  <text class="sub" x="1425" y="560" text-anchor="middle">auth.tesla.com + fleet-api</text>
+
+  <rect class="ext" x="1250" y="740" width="280" height="120" rx="10"/>
+  <rect class="extIn" x="1257" y="747" width="266" height="106" rx="7"/>
+  <text class="title" x="1390" y="794" text-anchor="middle">Your Tesla</text>
+  <text class="sub" x="1390" y="826" text-anchor="middle">virtual key paired</text>
+
+  <!-- Tesla API -> Car -->
+  <line class="edge" x1="1390" y1="600" x2="1390" y2="734" marker-end="url(#arrow)"/>
+
+  <!-- ===== Legend ===== -->
+  <line class="edge" x1="1250" y1="948" x2="1300" y2="948"/>
+  <text class="sub" x="1312" y="955">sync call</text>
+  <line class="edgeD" x1="1250" y1="980" x2="1300" y2="980"/>
+  <text class="sub" x="1312" y="987">store access</text>
+</svg>

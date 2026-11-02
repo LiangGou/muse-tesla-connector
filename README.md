@@ -66,32 +66,9 @@ On a drive, the author asked his Muse agent to order a coffee ahead and send the
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    Owner(["Owner"])
-    Agent(["Muse agent"])
+![Architecture diagram: the owner and the Muse agent sit outside a dashed trust boundary; inside it are the bin/tesla CLI, service/broker.py, tesla-http-proxy, the service/secrets/ secret store, and the service/keys/ signing keys; on the other side are the Tesla Fleet API and the car. The broker reads via the Fleet API and sends commands through the local signing proxy.](assets/architecture.svg)
 
-    subgraph Local["Your machine (trust boundary)"]
-        CLI["bin/tesla<br/>connector CLI"]
-        Broker["service/broker.py<br/>OAuth token chain, refresh state machine,<br/>nav prepare/send guard"]
-        Proxy["tesla-http-proxy<br/>127.0.0.1:4443, signs commands<br/>with the local Fleet API key"]
-        Store[("service/secrets/<br/>client secret + token store, mode 600")]
-        Keys[("service/keys/<br/>Fleet API signing key (private half never leaves)")]
-    end
-
-    TeslaAPI[["Tesla Fleet API<br/>auth.tesla.com + fleet-api"]]
-    Car[["Your Tesla<br/>virtual key paired"]]
-
-    Owner -->|"confirms exact destination<br/>in conversation"| Agent
-    Agent -->|"CLI verbs: reads, wake,<br/>nav-prepare / nav-send"| CLI
-    CLI --> Broker
-    Broker -->|"reads + unsigned calls<br/>HTTPS + OAuth bearer"| TeslaAPI
-    Broker -->|"command sends<br/>via local proxy"| Proxy
-    Proxy -->|"signed command<br/>HTTPS"| TeslaAPI
-    TeslaAPI --> Car
-    Broker -.->|"reads/writes tokens"| Store
-    Proxy -.->|"signs with"| Keys
-```
+Diagram source: [docs/architecture.mmd](docs/architecture.mmd)
 
 **Read flow**: agent → `bin/tesla` → broker (refreshes the OAuth token if needed) → Fleet API → summarized JSON back to the agent.
 
