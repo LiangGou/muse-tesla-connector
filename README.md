@@ -1,10 +1,40 @@
+**English** | [简体中文](README.zh-CN.md)
+
+<div align="center">
+
 # Muse Tesla Connector — Free
 
 **Connect your Tesla to your Muse agent through Tesla's official Fleet API. No subscription, no third-party service holding your tokens — everything runs on your own machine, under a developer app you own.**
 
+[![License: MIT](https://img.shields.io/github/license/LiangGou/muse-tesla-connector)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/LiangGou/muse-tesla-connector)](https://github.com/LiangGou/muse-tesla-connector/stargazers)
+
+</div>
+
 Third-party Tesla dashboards and agent integrations typically charge a monthly subscription *per car* for the privilege of holding your Tesla credentials on their servers. This project is the do-it-yourself alternative: a small local broker that speaks to Tesla's official Fleet API with your own developer application, exposes a deliberately tiny command surface to your Muse agent, and keeps every secret on your disk.
 
 > Status: working reference implementation, built and used daily by its author with a Muse agent. Python 3.10+, no third-party Python dependencies (standard library only). The signing proxy is Tesla's official `tesla-http-proxy` from the [vehicle-command](https://github.com/teslamotors/vehicle-command) repository, which you build or download yourself — it is not vendored here.
+
+## Highlights
+
+- **Reads + exactly two commands** — full vehicle reads, and the only actuation the broker can express is *wake* and *send a navigation destination*. Nothing else exists in the code.
+- **Owner confirmation for every send** — navigation is prepare → show the exact destination → confirm with a one-time token → send. No silent sends.
+- **Secrets never leave your machine** — OAuth tokens, the client secret, and the signing key live in a local mode-600 store; only the public key is ever published.
+- **$0/month** — your own Tesla developer app and Tesla's pay-per-use Fleet API replace the per-car subscription.
+
+## Contents
+
+- [What it does](#what-it-does)
+- [Why it exists](#why-it-exists)
+- [Architecture](#architecture)
+- [Safety model (summary)](#safety-model-summary)
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+- [Usage](#usage)
+- [Costs](#costs)
+- [Limitations](#limitations)
+- [Credits](#credits)
+- [License](#license)
 
 ## What it does
 
